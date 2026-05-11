@@ -1,4 +1,3 @@
 @echo off
 cd /d "%~dp0"
-python -m app.main
-pause
+start "" python -m app.main
