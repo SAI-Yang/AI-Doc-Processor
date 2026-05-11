@@ -5,3 +5,7 @@ openai>=1.0.0
 anthropic>=0.30.0
 tiktoken>=0.7.0
 aiohttp>=3.9.0
+mammoth>=1.6.0
+PyQtWebEngine>=5.15.0
+Pillow>=10.0.0
+jieba>=0.42.1  # 中文分词

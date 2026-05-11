@@ -1,6 +1,7 @@
 """批量处理控制 - 后台线程 + 进度跟踪 + 日志输出"""
 
 import asyncio
+import copy
 import time
 import traceback
 from datetime import datetime
@@ -45,11 +46,12 @@ class BatchWorker(QThread):
     all_finished = pyqtSignal(dict)           # 汇总数据
 
     def __init__(self, file_paths: list[Path], template_pipeline: list[tuple],
-                 config: AppConfig, parent=None):
+                 config: AppConfig, output_dir: str = '', parent=None):
         super().__init__(parent)
         self.file_paths = file_paths
         self.template_pipeline = template_pipeline  # [(template_id, template_data), ...]
         self.config = config
+        self._output_dir = output_dir
         self._mutex = QMutex()
         self._paused = False
         self._cancelled = False
@@ -77,7 +79,7 @@ class BatchWorker(QThread):
         success_count = 0
         fail_count = 0
         start_time = time.time()
-        output_dir = Path.home() / '.ai-doc-processor' / 'output'
+        output_dir = Path(self._output_dir) if hasattr(self, '_output_dir') and self._output_dir else Path.home() / '.ai-doc-processor' / 'output'
         output_dir.mkdir(parents=True, exist_ok=True)
 
         self.progress_range.emit(total)
@@ -149,32 +151,49 @@ class BatchWorker(QThread):
                             user_prompt = tdata.get('user_prompt', '').replace('{text}', current_content)
                             user_prompt = user_prompt.replace('{content}', current_content)
 
-                        # 临时覆盖温度/max_tokens
-                        llm_config.temperature = tdata.get('temperature', llm_config.temperature)
-                        llm_config.max_tokens = tdata.get('max_tokens', llm_config.max_tokens)
+                        # 创建临时配置副本，不修改全局配置
+                        step_config = copy.copy(llm_config)
+                        step_config.temperature = tdata.get('temperature', llm_config.temperature)
+                        step_config.max_tokens = tdata.get('max_tokens', llm_config.max_tokens)
 
                         # 3. 调用 API
-                        client = create_client(llm_config)
+                        client = create_client(step_config)
                         self.log.emit(f'  调用 API ({llm_config.model})...')
 
                         # 使用 asyncio.run 同步调用异步客户端
                         processed = asyncio.run(
                             client.process_content(
                                 content=current_content,
-                                system_prompt=system_prompt,
+                                system_prompt=system_prompt + '\n\n【重要】输出纯文本，禁止使用任何 Markdown 符号（**、*、#、` 等）',
                                 user_prompt=user_prompt,
                             )
                         )
 
-                        current_content = processed.strip() or current_content
+                        from app.processing_skill import clean_output
+                        processed = clean_output(processed)
+                        current_content = processed or current_content
 
                     # 4. 写入结果
                     result_content = current_content
                     output_path = session_dir / f'{file_path.stem}_processed{file_path.suffix}'
                     self.log.emit(f'  写入结果: {output_path.name}')
 
-                    # 简单写入文本
-                    output_path.write_text(result_content, encoding='utf-8')
+                    # 对 .docx 文件使用 DocxHandler 保留格式
+                    if file_path.suffix.lower() == '.docx':
+                        try:
+                            from app.docx_handler import DocxHandler
+                            from app.processing_skill import clean_output
+                            handler = DocxHandler()
+                            handler.open(str(file_path))
+                            handler.apply_changes(result_content)
+                            output_path = output_path.with_suffix('.docx')
+                            handler.save(str(output_path))
+                        except Exception as e:
+                            self.log_error.emit(f'  DOCX 写入失败（回退到纯文本）: {e}')
+                            output_path.write_text(result_content, encoding='utf-8')
+                    else:
+                        # 纯文本写入
+                        output_path.write_text(result_content, encoding='utf-8')
 
                     # 5. 发送结果信号
                     self.file_content_result.emit(idx, original_content, result_content)
@@ -231,6 +250,8 @@ class BatchControlWidget(QWidget):
         self._worker: BatchWorker = None
         self._file_paths: list[Path] = []
         self._file_status: dict[int, str] = {}  # idx -> status
+        self._template_pipeline: list[tuple] = []  # 初始化防止 AttributeError
+        self._config = None
         self._build_ui()
 
     def _build_ui(self):
@@ -292,11 +313,12 @@ class BatchControlWidget(QWidget):
         self._update_status_list()
 
     def start_batch(self, paths: list[Path], template_pipeline: list[tuple],
-                    config: AppConfig):
+                    config: AppConfig, output_dir: str = ''):
         """开始批量处理"""
         self._file_paths = list(paths)
         self._template_pipeline = template_pipeline
         self._config = config
+        self._output_dir = output_dir or str(Path.home() / 'Desktop' / 'AI-处理结果')
         self._start()
 
     def _start(self):
@@ -318,7 +340,7 @@ class BatchControlWidget(QWidget):
 
         # 创建并启动工作线程
         self._worker = BatchWorker(
-            self._file_paths, self._template_pipeline, self._config
+            self._file_paths, self._template_pipeline, self._config, self._output_dir
         )
 
         # 连接信号

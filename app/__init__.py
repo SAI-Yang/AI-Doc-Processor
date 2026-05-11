@@ -41,6 +41,8 @@ TEMPLATE_METADATA = {
     'expand':           {'icon': '⊕', 'category': '处理'},
     'simplify':         {'icon': '▽', 'category': '处理'},
     'custom':           {'icon': '✚', 'category': '自定义'},
+    'image_description': {'icon': '🖼', 'category': '处理'},
+    'generate_caption':  {'icon': '🏷', 'category': '处理'},
 }
 
 # 类别排序

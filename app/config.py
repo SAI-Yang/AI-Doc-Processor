@@ -51,6 +51,8 @@ class AppConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
+    font_family: str = "LXGW WenKai"  # 字体选择，默认霞鹜文楷
+    output_dir: str = ""  # 输出目录，空表示使用桌面/AI-处理结果
 
     @classmethod
     def default(cls) -> "AppConfig":

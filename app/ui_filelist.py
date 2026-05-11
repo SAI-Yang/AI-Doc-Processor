@@ -73,6 +73,7 @@ class FileListWidget(QWidget):
         super().__init__(parent)
         self._files: list[FileItem] = []
         self._filter_mode = 'all'
+        self._type_filter_mode = 'all'  # 文件类型筛选
         self._build_ui()
 
         # 启用拖拽
@@ -117,6 +118,13 @@ class FileListWidget(QWidget):
         self.filter_combo.setToolTip('按状态筛选文件')
         self.filter_combo.currentTextChanged.connect(self._apply_filter)
         toolbar.addWidget(self.filter_combo)
+
+        # 文件类型筛选下拉框
+        self.type_combo = QComboBox()
+        self.type_combo.addItems(['全部类型', '.docx', '.pdf', '.txt', '.md'])
+        self.type_combo.setToolTip('按文件类型筛选')
+        self.type_combo.currentTextChanged.connect(self._apply_type_filter)
+        toolbar.addWidget(self.type_combo)
 
         layout.addLayout(toolbar)
 
@@ -211,7 +219,7 @@ class FileListWidget(QWidget):
         self._filtered_indices = []
 
         for i, f in enumerate(self._files):
-            # 筛选
+            # 状态筛选
             if self._filter_mode == 'pending' and f.status != FILE_PENDING:
                 continue
             elif self._filter_mode == 'processing' and f.status != FILE_PROCESSING:
@@ -219,6 +227,10 @@ class FileListWidget(QWidget):
             elif self._filter_mode == 'done' and f.status != FILE_DONE:
                 continue
             elif self._filter_mode == 'failed' and f.status != FILE_FAILED:
+                continue
+
+            # 文件类型筛选
+            if self._type_filter_mode != 'all' and f.path.suffix.lower() != self._type_filter_mode:
                 continue
 
             self._filtered_indices.append(i)
@@ -245,6 +257,12 @@ class FileListWidget(QWidget):
     def _apply_filter(self, text: str):
         mapping = {'全部': 'all', '待处理': 'pending', '处理中': 'processing', '已完成': 'done', '失败': 'failed'}
         self._filter_mode = mapping.get(text, 'all')
+        self._refresh_list()
+
+    def _apply_type_filter(self, text: str):
+        """按文件类型筛选"""
+        mapping = {'全部类型': 'all', '.docx': '.docx', '.pdf': '.pdf', '.txt': '.txt', '.md': '.md'}
+        self._type_filter_mode = mapping.get(text, 'all')
         self._refresh_list()
 
     # ── 拖拽支持 ────────────────────────────────────────
@@ -277,26 +295,33 @@ class FileListWidget(QWidget):
 
     def _show_context_menu(self, pos):
         item = self.list_widget.itemAt(pos)
-        if item is None:
-            return
-
         menu = QMenu(self)
 
-        remove_action = QAction('移除选中', self)
-        remove_action.triggered.connect(lambda: self.remove_files(self.get_selected()))
-        menu.addAction(remove_action)
+        if item is not None:
+            remove_action = QAction('移除选中', self)
+            remove_action.triggered.connect(lambda: self.remove_files(self.get_selected()))
+            menu.addAction(remove_action)
 
-        clear_done_action = QAction('清除已完成/失败', self)
-        clear_done_action.triggered.connect(self.clear_completed)
-        menu.addAction(clear_done_action)
+            clear_done_action = QAction('清除已完成/失败', self)
+            clear_done_action.triggered.connect(self.clear_completed)
+            menu.addAction(clear_done_action)
 
-        menu.addSeparator()
+            menu.addSeparator()
 
-        open_location_action = QAction('打开文件位置', self)
-        open_location_action.triggered.connect(self._open_file_location)
-        menu.addAction(open_location_action)
+            open_location_action = QAction('打开文件位置', self)
+            open_location_action.triggered.connect(self._open_file_location)
+            menu.addAction(open_location_action)
 
-        menu.exec_(self.list_widget.mapToGlobal(pos))
+            menu.addSeparator()
+
+        # 清空全部 — 即使点空白区域也可访问
+        if self._files:
+            clear_all_action = QAction('清空全部', self)
+            clear_all_action.triggered.connect(self._clear_all)
+            menu.addAction(clear_all_action)
+
+        if not menu.isEmpty():
+            menu.exec_(self.list_widget.mapToGlobal(pos))
 
     def _open_file_location(self):
         selected = self.get_selected()

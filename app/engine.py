@@ -16,10 +16,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
+from dataclasses import replace
+
 from .config import AppConfig
 from .document import Document, read_document, write_document
 from .llm_client import LLMError, create_client, estimate_tokens
 from .template_manager import TemplateManager
+from .processing_skill import DocProcessingSkill, is_garbled, clean_output
+from .docx_handler import DocxHandler
 
 logger = logging.getLogger(__name__)
 
@@ -268,6 +272,12 @@ class ProcessingEngine:
         Returns:
             输出文件路径
         """
+        # 对 .docx 文件使用段落级处理（保留原格式）
+        if input_path.suffix.lower() == '.docx':
+            return await self._process_docx_paragraphs(
+                input_path, output_path, template_id, output_format
+            )
+
         # 1. 读取文档
         self._report(ProgressInfo(stage="reading", current=0, total=5,
                                    message=f"读取文档: {input_path.name}"))
@@ -293,7 +303,7 @@ class ProcessingEngine:
         # 3. 智能分段
         self._report(ProgressInfo(stage="splitting", current=0, total=1,
                                    message="正在分段..."))
-        max_chunk_tokens = self.config.llm.max_tokens // 2
+        max_chunk_tokens = 6000  # 每块最多 token 数，约 4000-5000 中文字符
         chunks = split_into_chunks(document, max_chunk_tokens)
         self._report(ProgressInfo(stage="splitting", current=1, total=1,
                                    message=f"共 {len(chunks)} 段"))
@@ -301,13 +311,27 @@ class ProcessingEngine:
         if not chunks:
             raise ValueError("文档内容为空，无法处理")
 
-        # 4. 创建 LLM 客户端
-        llm_client = create_client(self.config.llm)
+        # 4. 创建 LLM 客户端（使用模板指定的温度/max_tokens 覆盖全局配置）
+        llm_client = create_client(
+            replace(self.config.llm, temperature=tpl.temperature, max_tokens=tpl.max_tokens)
+        )
 
-        # 5. 并行处理各段
+        # 5. 使用处理技能引擎（保障编码正确+全文档处理）
         self._report(ProgressInfo(stage="processing", current=0, total=len(chunks),
                                    message="开始处理..."))
-        results = await self._process_chunks(llm_client, chunks, template_id)
+        skill = DocProcessingSkill(llm_client)
+        tpl = self.template_manager.get(template_id)
+        results = []
+        for chunk in chunks:
+            system_prompt, user_prompt, _t, _m = self.template_manager.render(
+                template_id, chunk.text
+            )
+            result = await skill.process(chunk.text, system_prompt, user_prompt)
+            results.append(result)
+            self._report(ProgressInfo(
+                stage="processing", current=chunk.index, total=len(chunks),
+                message=f"处理第 {chunk.index+1}/{len(chunks)} 段 ({chunk.token_count} tokens)"
+            ))
 
         # 6. 合并结果
         self._report(ProgressInfo(stage="merging", current=0, total=1,
@@ -441,6 +465,69 @@ class ProcessingEngine:
             })
 
         return merged
+
+    async def _process_docx_paragraphs(
+        self,
+        input_path: Path,
+        output_path: Path,
+        template_id: str,
+        output_format: Optional[str] = None,
+    ) -> Path:
+        """段落级处理 .docx 文件，保留原格式
+
+        逐段读取，逐段送 LLM 处理，逐段写回。
+        原文结构、字体、字号、加粗、对齐等格式完全保留。
+        """
+        self._report(ProgressInfo(stage="reading", current=0, total=1,
+                                   message=f"逐段处理: {input_path.name}"))
+
+        handler = DocxHandler()
+        handler.open(str(input_path))
+        paragraphs = handler.get_paragraphs()
+
+        tpl = self.template_manager.get(template_id)
+        if tpl is None:
+            raise ValueError(f"模板 '{template_id}' 不存在")
+
+        llm_client = create_client(
+            replace(self.config.llm, temperature=tpl.temperature, max_tokens=tpl.max_tokens)
+        )
+        skill = DocProcessingSkill(llm_client)
+
+        total = len(paragraphs)
+        processed_texts = []
+
+        for idx, para in enumerate(paragraphs):
+            text = para.get("text", "").strip()
+            if not text:
+                processed_texts.append("")
+                continue
+
+            self._report(ProgressInfo(
+                stage="processing", current=idx, total=total,
+                message=f"段落 {idx+1}/{total} ({len(text)} 字符)"
+            ))
+
+            system_prompt, user_prompt, _t, _m = self.template_manager.render(
+                template_id, text
+            )
+            try:
+                result = await skill.process(text, system_prompt, user_prompt)
+                processed_texts.append(result)
+            except Exception as e:
+                logger.error(f"段落 {idx+1} 处理失败: {e}")
+                processed_texts.append(text)  # 失败保留原文
+
+        # 写回文档
+        handler.apply_changes("\n".join(processed_texts))
+        out = output_path
+        if out.suffix.lower() != '.docx':
+            out = out.with_suffix('.docx')
+        handler.save(str(out))
+
+        self._report(ProgressInfo(stage="done", current=1, total=1,
+                                   message=f"处理完成: {out}"))
+        return out
 
     # ── 缓存管理 ──────────────────────────────────────
 

@@ -11,6 +11,8 @@ from PyQt5.QtGui import QFont
 
 from app import APP_NAME, APP_VERSION
 from app.config import AppConfig, LLMConfig, ProcessingConfig
+from app.font_manager import get_chinese_fonts, apply_font
+from PyQt5.QtWidgets import QApplication
 
 
 class SettingsDialog(QDialog):
@@ -48,6 +50,7 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self._build_api_tab(), 'API 配置')
         self.tabs.addTab(self._build_processing_tab(), '处理配置')
         self.tabs.addTab(self._build_shortcuts_tab(), '快捷键')
+        self.tabs.addTab(self._build_appearance_tab(), '外观')
         self.tabs.addTab(self._build_about_tab(), '关于')
         layout.addWidget(self.tabs)
 
@@ -223,6 +226,68 @@ class SettingsDialog(QDialog):
         layout.addWidget(edit)
         return tab
 
+    # ── 外观标签页 ──────────────────────────────────────
+
+    def _build_appearance_tab(self) -> QWidget:
+        tab = QWidget()
+        outer = QVBoxLayout(tab)
+        outer.setContentsMargins(24, 20, 24, 20)
+
+        layout = QFormLayout()
+        layout.setSpacing(16)
+
+        # 字体选择
+        font_label = QLabel('界面字体')
+        font_label.setStyleSheet('font-weight: 600; font-size: 13px;')
+        layout.addRow(font_label)
+
+        self.font_combo = QComboBox()
+        self.font_combo.setMinimumWidth(300)
+        self._fonts = get_chinese_fonts()
+        current_idx = 0
+        for i, f in enumerate(self._fonts):
+            label = f['name']
+            if f['bundled']:
+                label += f'  ● {f["style"]}'
+            elif f['type'] == '系统':
+                label += ' (系统)'
+            self.font_combo.addItem(label, f['family'])
+            if f['family'] == 'LXGW WenKai':
+                current_idx = i
+        self.font_combo.setCurrentIndex(current_idx)
+        font_note = QLabel('💡 霞鹜文楷为打包的开源字体（18k star），其余为系统字体')
+        font_note.setStyleSheet('color: #7f8c8d; font-size: 11px;')
+        layout.addRow('', self.font_combo)
+        layout.addRow('', font_note)
+
+        # 预览
+        preview_label = QLabel('预览效果')
+        preview_label.setStyleSheet('font-weight: 600; font-size: 13px; padding-top: 8px;')
+        layout.addRow(preview_label)
+
+        self.font_preview = QTextEdit()
+        self.font_preview.setMaximumHeight(100)
+        self.font_preview.setPlainText(
+            '这是一段字体预览文字。\n'
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZ\n'
+            'abcdefghijklmnopqrstuvwxyz\n'
+            '0123456789 !@#$%^&*()'
+        )
+        layout.addRow(self.font_preview)
+
+        self.font_combo.currentIndexChanged.connect(self._on_font_changed)
+
+        outer.addLayout(layout)
+        outer.addStretch()
+        return tab
+
+    def _on_font_changed(self, idx):
+        """字体选择变化时实时预览"""
+        family = self.font_combo.itemData(idx)
+        if family:
+            font = QFont(family, 12)
+            self.font_preview.setFont(font)
+
     # ── 关于标签页 ──────────────────────────────────────
 
     def _build_about_tab(self) -> QWidget:
@@ -252,15 +317,15 @@ class SettingsDialog(QDialog):
         llm = self.config.llm
         proc = self.config.processing
 
-        # API 标签
+        # API 标签：先设 provider（会触发 _on_provider_changed 更新模型列表）
         idx = self.provider_combo.findData(llm.provider)
         if idx >= 0:
             self.provider_combo.setCurrentIndex(idx)
+        # 再设 API Key 和 URL（覆盖 provider 切换时的默认提示）
         self.api_key_edit.setText(llm.api_key)
         self.base_url_edit.setText(llm.base_url)
 
-        # 更新模型列表
-        self._on_provider_changed(self.provider_combo.currentIndex())
+        # 模型列表已在 setCurrentIndex 时通过信号更新完毕
         model_idx = self.model_combo.findText(llm.model)
         if model_idx >= 0:
             self.model_combo.setCurrentIndex(model_idx)
@@ -277,6 +342,11 @@ class SettingsDialog(QDialog):
         fmt_idx = self.format_combo.findText(self.config.output.format)
         if fmt_idx >= 0:
             self.format_combo.setCurrentIndex(fmt_idx)
+
+        # 字体标签
+        font_idx = self.font_combo.findData(self.config.font_family)
+        if font_idx >= 0:
+            self.font_combo.setCurrentIndex(font_idx)
 
     def _collect_config(self) -> AppConfig:
         """从界面收集值，返回新的 AppConfig"""
@@ -297,15 +367,45 @@ class SettingsDialog(QDialog):
                 retry_count=self.retry_spin.value(),
                 timeout=self.timeout_spin.value(),
             ),
+            font_family=self.font_combo.currentData(),
         )
+
+    def _apply_font_globally(self, font_family: str):
+        """全局应用字体：设置 QFont + 更新 QSS 覆盖"""
+        app = QApplication.instance()
+        if not app or not font_family:
+            return
+        from app.font_manager import apply_font
+        apply_font(app, font_family, 10)
+        # 替换 QSS 中的字体覆盖段（去除旧的 FONT_OVERRIDE，追加新的）
+        current = app.styleSheet() or ''
+        marker_start = '/* FONT_OVERRIDE_START */'
+        marker_end = '/* FONT_OVERRIDE_END */'
+        if marker_start in current:
+            current = current[:current.index(marker_start)] + current[current.index(marker_end) + len(marker_end):]
+        font_qss = f"""
+        {marker_start}
+        QLabel, QLineEdit, QTextEdit, QPlainTextEdit, QStatusBar,
+        QComboBox, QListWidget, QTreeWidget {{
+            font-family: "{font_family}", "Microsoft YaHei UI", "微软雅黑", sans-serif;
+        }}
+        QPushButton {{
+            font-family: "{font_family}", "Microsoft YaHei UI", "微软雅黑", sans-serif;
+            font-weight: 500;
+        }}
+        {marker_end}
+        """
+        app.setStyleSheet(current + font_qss)
 
     def _on_apply(self):
         self.config = self._collect_config()
         self.config.save()
+        self._apply_font_globally(self.font_combo.currentData())
 
     def _on_ok(self):
         self.config = self._collect_config()
         self.config.save()
+        self._apply_font_globally(self.font_combo.currentData())
         self.accept()
 
     @classmethod
