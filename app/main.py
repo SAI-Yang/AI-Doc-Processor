@@ -6,6 +6,9 @@ import os
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# 设置 matplotlib 非交互式后端，防止与 PyQt5 冲突
+os.environ['MPLBACKEND'] = 'Agg'
+
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
