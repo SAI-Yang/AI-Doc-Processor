@@ -1,7 +1,13 @@
-__pycache__/
+*.db
+*.docx
 *.pyc
 .DS_Store
-*.db
-output/
+__pycache__/
+c*.png
+c[0-9]_*.png
+chart*.png
 fonts/
+output/
+output_*.docx
 test_*.docx
+test_*.png
