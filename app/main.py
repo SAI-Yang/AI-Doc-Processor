@@ -17,10 +17,14 @@ from app.ui_main import MainWindow
 
 def main():
     """应用入口"""
-
-    # 高 DPI 适配
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    try:
+        # 高 DPI 适配
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    except Exception as e:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(0, f'启动失败：{e}\n请尝试重新安装或检查Python环境', '错误', 0)
+        return
 
     # 创建应用
     app = QApplication(sys.argv)
