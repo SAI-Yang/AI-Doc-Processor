@@ -18,8 +18,6 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QPixmap, QFont, QImage
 
-from app.figure_generator import FigureGenerator
-
 logger = logging.getLogger(__name__)
 
 
@@ -42,9 +40,6 @@ class FigureInsertDialog(QDialog):
     +--------------------------------------------------+
     """
 
-    CHART_TYPE_KEYS = list(FigureGenerator.CHART_TYPES.keys())
-    CHART_TYPE_NAMES = list(FigureGenerator.CHART_TYPES.values())
-
     def __init__(self, docx_path: str = "", parent=None):
         """
         Args:
@@ -52,6 +47,19 @@ class FigureInsertDialog(QDialog):
             parent: 父窗口
         """
         super().__init__(parent)
+        try:
+            from app.figure_generator import FigureGenerator
+            self._FigureGenerator = FigureGenerator
+        except ImportError:
+            QMessageBox.critical(
+                self, '缺少依赖',
+                '需要安装 matplotlib 库才能生成图表。\n请运行: pip install matplotlib',
+            )
+            self.reject()
+            return
+
+        self.CHART_TYPE_KEYS = list(FigureGenerator.CHART_TYPES.keys())
+        self.CHART_TYPE_NAMES = list(FigureGenerator.CHART_TYPES.values())
         self._docx_path = docx_path
         self._generator = FigureGenerator()
         self._generated_path: str = ""
@@ -426,7 +434,7 @@ class FigureInsertDialog(QDialog):
                 '流程示意图': 'bar',  # 流程用 render_flow_diagram 是特殊处理
             }
             ctype = type_map.get(chart_type, 'line')
-            keys = list(FigureGenerator.CHART_TYPES.keys())
+            keys = list(self._FigureGenerator.CHART_TYPES.keys())
             if ctype in keys:
                 self._type_combo.setCurrentIndex(keys.index(ctype))
                 self._auto_type_check.setChecked(False)
@@ -450,7 +458,7 @@ class FigureInsertDialog(QDialog):
         data = {}
         if csv_text:
             try:
-                data = FigureGenerator.parse_csv_data(csv_text)
+                data = self._FigureGenerator.parse_csv_data(csv_text)
             except Exception as e:
                 logger.warning("CSV 解析失败，使用示例数据: %s", e)
 

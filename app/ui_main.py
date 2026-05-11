@@ -342,6 +342,23 @@ class MainWindow(QMainWindow):
         self.status_progress.setVisible(False)
         status.addPermanentWidget(self.status_progress)
 
+    # ── 窗口关闭事件保护 ─────────────────────────────────────
+
+    def closeEvent(self, event):
+        """关闭窗口时保护处理，防止 segfault"""
+        try:
+            if hasattr(self, 'batch_control') and self.batch_control._worker:
+                self.batch_control._worker.cancel()
+                self.batch_control._worker.wait(2000)
+            if hasattr(self, 'generate_panel'):
+                self.generate_panel.cancel_generation()
+        except Exception:
+            pass
+        try:
+            super().closeEvent(event)
+        except Exception:
+            pass
+
     # ── 快捷键 ──────────────────────────────────────────────
 
     def _setup_shortcuts(self):
@@ -471,8 +488,11 @@ class MainWindow(QMainWindow):
         # 批量处理器完成 -> 历史记录
         original_finished = worker._on_all_finished
         def on_finished(summary):
-            original_finished(summary)
-            self._on_batch_finished(summary)
+            try:
+                original_finished(summary)
+                self._on_batch_finished(summary)
+            except Exception:
+                pass
         worker._on_all_finished = on_finished
 
         # 批量处理器文件内容 -> 预览
@@ -566,21 +586,27 @@ class MainWindow(QMainWindow):
 
     def _toolbar_generate_figure(self):
         """打开图表生成与插入对话框"""
-        docx_path = ""
-        if self._current_docx_path:
-            p = Path(self._current_docx_path)
-            if p.suffix.lower() == '.docx' and p.exists():
-                docx_path = self._current_docx_path
-        else:
-            # 从文件列表中取第一个 .docx 文件
-            files = self.file_list.get_all_files()
-            for f in files:
-                if f.path.suffix.lower() == '.docx' and f.path.exists():
-                    docx_path = str(f.path)
-                    break
+        try:
+            docx_path = ""
+            if self._current_docx_path:
+                p = Path(self._current_docx_path)
+                if p.suffix.lower() == '.docx' and p.exists():
+                    docx_path = self._current_docx_path
+            else:
+                # 从文件列表中取第一个 .docx 文件
+                files = self.file_list.get_all_files()
+                for f in files:
+                    if f.path.suffix.lower() == '.docx' and f.path.exists():
+                        docx_path = str(f.path)
+                        break
 
-        dialog = FigureInsertDialog(docx_path, self)
-        dialog.exec_()
+            dialog = FigureInsertDialog(docx_path, self)
+            dialog.exec_()
+        except Exception:
+            QMessageBox.critical(
+                self, '错误',
+                '无法打开图表生成对话框，请确认依赖完整（matplotlib）。',
+            )
 
     # ── 模式切换 ──────────────────────────────────────────────
 
