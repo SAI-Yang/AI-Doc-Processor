@@ -54,6 +54,8 @@ class GenerateWorker(QThread):
                     on_chunk=self._on_chunk,
                 )
             )
+            from app.processing_skill import clean_output
+            text = clean_output(text)
             self.finished.emit(text)
         except Exception as e:
             logger.exception("生成线程异常")

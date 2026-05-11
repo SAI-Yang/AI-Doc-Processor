@@ -337,4 +337,5 @@ class DocumentGenerator:
         )
         user_prompt += f"\n\n格式说明：{format_desc}"
 
-        return DEFAULT_SYSTEM_PROMPT, user_prompt
+        from app.processing_skill import ENCODING_SAFETY_PROMPT
+        return DEFAULT_SYSTEM_PROMPT + '\n\n' + ENCODING_SAFETY_PROMPT, user_prompt
