@@ -11,3 +11,5 @@ output/
 output_*.docx
 test_*.docx
 test_*.png
+*.txt
+*.pdf
