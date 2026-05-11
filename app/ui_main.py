@@ -35,6 +35,7 @@ from app.ui_batch import BatchControlWidget, LogWidget
 from app.ui_settings import SettingsDialog
 from app.ui_history import HistoryWidget
 from app.ui_image_dialog import ImageInsertDialog
+from app.ui_figure import FigureInsertDialog
 from app.ui_generate import GeneratePanel
 
 
@@ -161,6 +162,12 @@ class MainWindow(QMainWindow):
         self.btn_insert_image.setToolTip('向文档中插入图片')
         self.btn_insert_image.clicked.connect(self._toolbar_insert_image)
         layout.addWidget(self.btn_insert_image)
+
+        # 生成图表
+        self.btn_generate_figure = QPushButton('📊 生成图表')
+        self.btn_generate_figure.setToolTip('生成科学图表并插入到文档')
+        self.btn_generate_figure.clicked.connect(self._toolbar_generate_figure)
+        layout.addWidget(self.btn_generate_figure)
 
         # 设置
         self.btn_settings = QPushButton('⚙ 设置')
@@ -557,6 +564,24 @@ class MainWindow(QMainWindow):
         dialog = ImageInsertDialog(str(path), self)
         dialog.exec_()
 
+    def _toolbar_generate_figure(self):
+        """打开图表生成与插入对话框"""
+        docx_path = ""
+        if self._current_docx_path:
+            p = Path(self._current_docx_path)
+            if p.suffix.lower() == '.docx' and p.exists():
+                docx_path = self._current_docx_path
+        else:
+            # 从文件列表中取第一个 .docx 文件
+            files = self.file_list.get_all_files()
+            for f in files:
+                if f.path.suffix.lower() == '.docx' and f.path.exists():
+                    docx_path = str(f.path)
+                    break
+
+        dialog = FigureInsertDialog(docx_path, self)
+        dialog.exec_()
+
     # ── 模式切换 ──────────────────────────────────────────────
 
     def _toggle_mode(self):
@@ -868,8 +893,29 @@ class MainWindow(QMainWindow):
 
     def _on_file_content_result(self, idx: int, original: str, processed: str):
         """收到处理结果，更新预览"""
-        self.preview.show_original(original)
-        self.preview.show_result(processed)
+        # 获取源文件路径和可能的输出文件路径，供文档模式预览使用
+        original_file = None
+        result_file = None
+        all_files = self.file_list.get_all_files()
+        if 0 <= idx < len(all_files):
+            file_item = all_files[idx]
+            original_file = file_item.path
+            # 尝试构造输出文件路径（与 BatchWorker 约定一致）
+            if hasattr(self, '_output_dir') and self._output_dir:
+                out_dir = Path(self._output_dir)
+                if out_dir.exists():
+                    # 扫描 session 子目录，查找匹配的处理后文件
+                    stem = file_item.path.stem
+                    suffix = file_item.path.suffix
+                    candidates = sorted(out_dir.rglob(f'{stem}_processed{suffix}'))
+                    if candidates:
+                        result_file = candidates[-1]  # 最新的匹配文件
+
+        self.preview.set_content(
+            original, processed,
+            original_file=original_file,
+            result_file=result_file,
+        )
         self.status_label.setText(f'文件 {idx+1} 处理完成')
 
         # 启用复制/导出按钮

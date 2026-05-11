@@ -498,9 +498,9 @@ class ProcessingEngine:
         processed_texts = []
 
         for idx, para in enumerate(paragraphs):
-            text = para.get("text", "").strip()
-            if not text:
-                processed_texts.append("")
+            text = para.get("text", "")
+            if not text.strip():
+                processed_texts.append(text)  # 保留原文（包括纯空格段落，保护封面排版）
                 continue
 
             self._report(ProgressInfo(

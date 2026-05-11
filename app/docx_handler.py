@@ -157,9 +157,22 @@ class DocxHandler:
             self._para_formats.append(fmt)
 
     def _clear_paragraph_texts(self):
-        """清除所有段落文本（保留 run 框架以便后续恢复格式）。"""
+        """清除所有段落文本（保留 run 框架以便后续恢复格式）。
+
+        只清除纯文本 run，不触碰包含图片（w:drawing / w:pict）的 run，
+        避免丢失文档中的图片关系引用。
+        """
+        from docx.oxml.ns import qn
+
         for para in self._doc.paragraphs:
             for run in para.runs:
+                # 跳过包含图片的 run（drawing 或 pict 元素）
+                has_image = (
+                    run._element.findall(qn('w:drawing'))
+                    or run._element.findall(qn('w:pict'))
+                )
+                if has_image:
+                    continue
                 run.text = ""
 
     def _map_format(self, idx: int, old_count: int, new_count: int) -> dict:
@@ -207,9 +220,38 @@ class DocxHandler:
         from docx.enum.text import WD_ALIGN_PARAGRAPH
         from docx.oxml.ns import qn
 
-        paragraph.clear()
-        run = paragraph.add_run(text)
+        # 不要使用 paragraph.clear() — 它会删除包含图片的 run（w:drawing/w:pict），
+        # 导致文档中的图片和对应关系引用丢失。
+        # 改为仅移除纯文本 run，保留图片 run。
+        runs_to_remove = [
+            r for r in paragraph.runs
+            if not (
+                r._element.findall(qn('w:drawing'))
+                or r._element.findall(qn('w:pict'))
+            )
+        ]
+        for r in runs_to_remove:
+            r._element.getparent().remove(r._element)
+
+        # 保留空段落（纯空格、空文本），不添加空 run
+        if not text:
+            return
+
+        # 原标题风格，直接使用原始字体/runs细节，不套用国家标准格式
+        original_runs = fmt.get("runs")
         style_name = str(fmt.get("style", "")).lower()
+
+        # 有多段 run 时保留 run 结构（保护封面字间空格等排版）
+        if original_runs and len(original_runs) > 1:
+            self._fill_runs(paragraph, text, original_runs)
+            # _fill_runs 已处理字体，不需要后面的国家格式设置
+            # 但仍需设置段落级别的缩进/行距
+            if 'normal' in style_name or style_name in ('', '正文'):
+                paragraph.paragraph_format.first_line_indent = Pt(24)
+                paragraph.paragraph_format.line_spacing = 1.5
+            return
+
+        run = paragraph.add_run(text)
 
         # 中文论文标准格式
         if 'heading' in style_name or any(k in style_name for k in ['标题', 'head']):
