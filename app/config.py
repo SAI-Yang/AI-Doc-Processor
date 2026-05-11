@@ -118,6 +118,8 @@ class AppConfig:
                     retry_count=processing_data.get("retry_count", 2),
                     timeout=processing_data.get("timeout", 120),
                 ),
+                font_family=data.get("font_family", "LXGW WenKai"),
+                output_dir=data.get("output_dir", ""),
             )
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning("配置文件解析失败: %s，使用默认配置", e)
