@@ -135,6 +135,7 @@ class DocxHandler:
                 "left_indent": para.paragraph_format.left_indent,
                 "space_before": para.paragraph_format.space_before,
                 "space_after": para.paragraph_format.space_after,
+                "line_spacing": para.paragraph_format.line_spacing,
                 "runs": [],
             }
             # 提取每个 run 的格式
@@ -237,51 +238,51 @@ class DocxHandler:
         if not text:
             return
 
-        # 原标题风格，直接使用原始字体/runs细节，不套用国家标准格式
-        original_runs = fmt.get("runs")
+        run = paragraph.add_run(text)
         style_name = str(fmt.get("style", "")).lower()
+        original_runs = fmt.get("runs")
+        is_heading = 'heading' in style_name or any(k in style_name for k in ['标题', 'head'])
 
-        # 有多段 run 时保留 run 结构（保护封面字间空格等排版）
-        if original_runs and len(original_runs) > 1:
-            self._fill_runs(paragraph, text, original_runs)
-            # _fill_runs 已处理字体，不需要后面的国家格式设置
-            # 但仍需设置段落级别的缩进/行距
-            if 'normal' in style_name or style_name in ('', '正文'):
-                paragraph.paragraph_format.first_line_indent = Pt(24)
-                paragraph.paragraph_format.line_spacing = 1.5
+        # 非标题段落：优先保留原始格式
+        if not is_heading and original_runs:
+            first = original_runs[0]
+            fn = first.get("font_name")
+            fs = first.get("font_size")
+            b = first.get("bold")
+            if fn:
+                run.font.name = fn
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), fn)
+            if fs:
+                run.font.size = fs
+            if b is not None:
+                run.bold = b
+            orig_line = fmt.get('line_spacing')
+            if orig_line:
+                paragraph.paragraph_format.line_spacing = orig_line
             return
 
-        run = paragraph.add_run(text)
-
-        # 中文论文标准格式
-        if 'heading' in style_name or any(k in style_name for k in ['标题', 'head']):
-            # 提取标题级别
+        # 中文论文标准格式（标题段落或无线索时应用）
+        if is_heading:
             level = 1
             for c in style_name:
                 if c.isdigit():
                     level = int(c)
                     break
-            # 字体：黑体加粗
             run.font.name = '黑体'
             run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
             run.bold = True
-            # 字号：一级15pt(小三)、二级14pt(四号)、三级12pt(小四)
             sizes = {1: 15, 2: 14, 3: 12}
             run.font.size = Pt(sizes.get(level, 14))
-            # 对齐：一级标题居中，其余左对齐
             if level == 1:
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            # 段前段后间距
             paragraph.paragraph_format.space_before = Pt(6)
             paragraph.paragraph_format.space_after = Pt(6)
         elif 'normal' in style_name or style_name in ('', '正文'):
-            # 正文：宋体 12pt (小四)
             run.font.name = '宋体'
             run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
             run.font.size = Pt(12)
-            # 首行缩进2字符(约24pt)
             paragraph.paragraph_format.first_line_indent = Pt(24)
-            # 行距1.5倍
+            paragraph.paragraph_format.line_spacing = 1.5
             paragraph.paragraph_format.line_spacing = 1.5
         else:
             # 默认正文格式
