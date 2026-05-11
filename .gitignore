@@ -4,3 +4,4 @@ __pycache__/
 *.db
 output/
 fonts/
+test_*.docx
