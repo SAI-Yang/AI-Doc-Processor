@@ -148,8 +148,12 @@ class BatchWorker(QThread):
                         else:
                             # 自定义模板
                             system_prompt = tdata.get('system_prompt', '')
-                            user_prompt = tdata.get('user_prompt', '').replace('{text}', current_content)
+                            raw = tdata.get('user_prompt', '')
+                            user_prompt = raw.replace('{text}', current_content)
                             user_prompt = user_prompt.replace('{content}', current_content)
+                            # 如果用户没写 {content} 占位符，自动追加文档内容
+                            if '{content}' not in raw and '{text}' not in raw and raw.strip():
+                                user_prompt = raw + '\n\n---\n' + current_content
 
                         # 创建临时配置副本，不修改全局配置
                         step_config = copy.copy(llm_config)

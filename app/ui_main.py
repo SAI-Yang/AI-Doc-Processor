@@ -845,9 +845,12 @@ class MainWindow(QMainWindow):
                         user_prompt = user_prompt.replace('{text}', current_text)
                 else:
                     system_prompt = tdata.get('system_prompt', '')
-                    user_prompt = tdata.get('user_prompt', '')
-                    user_prompt = user_prompt.replace('{text}', current_text)
+                    raw = tdata.get('user_prompt', '')
+                    user_prompt = raw.replace('{text}', current_text)
                     user_prompt = user_prompt.replace('{content}', current_text)
+                    # 如果没写占位符，自动追加文档内容
+                    if '{content}' not in raw and '{text}' not in raw and raw.strip():
+                        user_prompt = raw + '\n\n---\n' + current_text
 
                 last_user_prompt = user_prompt
 
