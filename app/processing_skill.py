@@ -147,10 +147,16 @@ def strip_markdown(text: str) -> str:
     text = re.sub(r'`(.+?)`', r'\1', text)
     # 移除代码块 ```...```
     text = re.sub(r'```[\s\S]*?```', '', text)
-    # 移除标题标记
+    # 移除 #hash# 标签（行中或行首）
+    text = re.sub(r'#([^#\s]+)#', r'\1', text)
+    # 移除行首标题标记
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # 移除单独 # 符号（前后有空格的情况）
+    text = re.sub(r'\s#\s', ' ', text)
     # 移除引用标记
     text = re.sub(r'^>\s+', '', text, flags=re.MULTILINE)
+    # 移除行中 > 引用符号
+    text = re.sub(r'\s>\s', ' ', text)
     # 移除分隔线
     text = re.sub(r'^[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
     # 移除无序列表标记

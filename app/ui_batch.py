@@ -161,10 +161,11 @@ class BatchWorker(QThread):
                         self.log.emit(f'  调用 API ({llm_config.model})...')
 
                         # 使用 asyncio.run 同步调用异步客户端
+                        from app.processing_skill import ENCODING_SAFETY_PROMPT
                         processed = asyncio.run(
                             client.process_content(
                                 content=current_content,
-                                system_prompt=system_prompt + '\n\n【重要】输出纯文本，禁止使用任何 Markdown 符号（**、*、#、` 等）',
+                                system_prompt=system_prompt + '\n\n' + ENCODING_SAFETY_PROMPT,
                                 user_prompt=user_prompt,
                             )
                         )
