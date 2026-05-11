@@ -6,8 +6,8 @@ set PY_CMD=
 python --version >nul 2>&1
 if %errorlevel% equ 0 set PY_CMD=python
 if "%PY_CMD%"=="" (
-    py -3 --version >nul 2>&1
-    if %errorlevel% equ 0 set PY_CMD=py -3
+    py --version >nul 2>&1
+    if %errorlevel% equ 0 set PY_CMD=py
 )
 if "%PY_CMD%"=="" (
     python3 --version >nul 2>&1
