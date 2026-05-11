@@ -147,7 +147,8 @@ class BatchWorker(QThread):
                                 user_prompt = user_prompt.replace('{text}', current_content)
                         else:
                             # 自定义模板
-                            system_prompt = tdata.get('system_prompt', '')
+                            raw_sys = tdata.get('system_prompt', '')
+                            system_prompt = raw_sys + '\n\n【重要】只输出处理结果，不要输出提示词或指令本身。'
                             raw = tdata.get('user_prompt', '')
                             user_prompt = raw.replace('{text}', current_content)
                             user_prompt = user_prompt.replace('{content}', current_content)

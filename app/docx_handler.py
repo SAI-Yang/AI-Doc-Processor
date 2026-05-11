@@ -124,6 +124,7 @@ class DocxHandler:
     def _parse_formats(self):
         """遍历段落，提取每段的格式信息。"""
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.ns import qn
 
         self._para_formats = []
         for para in self._doc.paragraphs:
@@ -140,9 +141,16 @@ class DocxHandler:
             }
             # 提取每个 run 的格式
             for run in para.runs:
+                ea = ''
+                rPr = run._element.find(qn('w:rPr'))
+                if rPr is not None:
+                    rf = rPr.find(qn('w:rFonts'))
+                    if rf is not None:
+                        ea = rf.get(qn('w:eastAsia'), '')
                 run_info = {
                     "text": run.text,
                     "font_name": run.font.name,
+                    "east_asia": ea,
                     "font_size": run.font.size,
                     "bold": run.bold,
                     "italic": run.italic,
@@ -243,25 +251,29 @@ class DocxHandler:
         original_runs = fmt.get("runs")
         is_heading = 'heading' in style_name or any(k in style_name for k in ['标题', 'head'])
 
-        # 非标题段落：优先保留原始格式
-        if not is_heading and original_runs:
-            first = original_runs[0]
-            fn = first.get("font_name")
-            fs = first.get("font_size")
-            b = first.get("bold")
-            if fn:
-                run.font.name = fn
-                run._element.rPr.rFonts.set(qn('w:eastAsia'), fn)
-            if fs:
-                run.font.size = fs
-            if b is not None:
-                run.bold = b
+        # 特殊排版检测（封面标题、信息行等）：中文特殊字体或超大字号时保留原格式
+        first_run = original_runs[0] if original_runs else {}
+        orig_size = first_run.get("font_size")
+        orig_size_pt = orig_size.pt if orig_size else 0
+        orig_ea = (first_run.get("east_asia") or "").lower()
+        orig_fn = (first_run.get("font_name") or "").lower()
+        # 中文特殊字体（仿宋、楷体等非宋体/黑体中文字体）或超大字号
+        chinese_special = bool(orig_ea) and orig_ea not in ('宋体', 'simsun', '黑体', 'simhei', '')
+        if chinese_special or orig_size_pt > 24:
+            if orig_fn and orig_fn not in ('times new roman', 'calibri', ''):
+                run.font.name = first_run["font_name"]
+            if orig_ea:
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), orig_ea)
+            if orig_size:
+                run.font.size = orig_size
+            if first_run.get("bold") is not None:
+                run.bold = first_run["bold"]
             orig_line = fmt.get('line_spacing')
             if orig_line:
                 paragraph.paragraph_format.line_spacing = orig_line
             return
 
-        # 中文论文标准格式（标题段落或无线索时应用）
+        # 中文论文标准格式（标题优先）
         if is_heading:
             level = 1
             for c in style_name:
@@ -277,21 +289,16 @@ class DocxHandler:
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             paragraph.paragraph_format.space_before = Pt(6)
             paragraph.paragraph_format.space_after = Pt(6)
-        elif 'normal' in style_name or style_name in ('', '正文'):
-            run.font.name = '宋体'
-            run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
-            run.font.size = Pt(12)
-            paragraph.paragraph_format.first_line_indent = Pt(24)
-            paragraph.paragraph_format.line_spacing = 1.5
-            paragraph.paragraph_format.line_spacing = 1.5
-        else:
-            # 默认正文格式
-            run.font.name = '宋体'
-            run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
-            run.font.size = Pt(12)
-            paragraph.paragraph_format.first_line_indent = Pt(24)
+            run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
+            run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
+            return
 
-        # 英文/数字用 Times New Roman
+        # 正文：宋体 12pt，首行缩进，1.5倍行距
+        run.font.name = '宋体'
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+        run.font.size = Pt(12)
+        paragraph.paragraph_format.first_line_indent = Pt(24)
+        paragraph.paragraph_format.line_spacing = 1.5
         run._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
         run._element.rPr.rFonts.set(qn('w:hAnsi'), 'Times New Roman')
 
