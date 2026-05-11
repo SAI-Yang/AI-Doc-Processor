@@ -19,14 +19,17 @@ def load_bundled_fonts() -> dict:
     result = {}
     if not FONTS_DIR.exists():
         return result
-    for name, info in BUNDLED_FONTS.items():
-        ttf_path = FONTS_DIR / info['file']
-        if ttf_path.exists():
-            font_id = QFontDatabase.addApplicationFont(str(ttf_path))
-            if font_id != -1:
-                families = QFontDatabase.applicationFontFamilies(font_id)
-                if families:
-                    result[name] = families[0]
+    try:
+        for name, info in BUNDLED_FONTS.items():
+            ttf_path = FONTS_DIR / info['file']
+            if ttf_path.exists():
+                font_id = QFontDatabase.addApplicationFont(str(ttf_path))
+                if font_id != -1:
+                    families = QFontDatabase.applicationFontFamilies(font_id)
+                    if families:
+                        result[name] = families[0]
+    except Exception:
+        pass
     return result
 
 def get_chinese_fonts() -> list[dict]:

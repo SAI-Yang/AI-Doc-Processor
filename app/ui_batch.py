@@ -237,7 +237,10 @@ class BatchWorker(QThread):
 
         self.log.emit('─' * 40)
         self.log.emit(f'处理完成! 成功: {success_count}, 失败: {fail_count}, 耗时: {total_time:.1f}秒')
-        self.all_finished.emit(summary)
+        try:
+            self.all_finished.emit(summary)
+        except Exception:
+            pass
 
 
 class BatchControlWidget(QWidget):
@@ -408,8 +411,11 @@ class BatchControlWidget(QWidget):
         pass
 
     def _on_all_finished(self, summary: dict):
-        self.progress_label.setText(f"完成! 成功: {summary['success']}, 失败: {summary['fail']}")
-        all_finished = summary  # 留给外部处理
+        try:
+            self.progress_label.setText(f"完成! 成功: {summary['success']}, 失败: {summary['fail']}")
+            all_finished = summary  # 留给外部处理
+        except Exception:
+            pass
 
     def _on_worker_finished(self):
         self.start_btn.setEnabled(True)
