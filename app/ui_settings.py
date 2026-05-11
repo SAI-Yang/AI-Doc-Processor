@@ -372,41 +372,50 @@ class SettingsDialog(QDialog):
 
     def _apply_font_globally(self, font_family: str):
         """全局应用字体：设置 QFont + 更新 QSS 覆盖"""
-        app = QApplication.instance()
-        if not app or not font_family:
-            return
-        from app.font_manager import apply_font
-        apply_font(app, font_family, 10)
-        # 替换 QSS 中的字体覆盖段（去除旧的 FONT_OVERRIDE，追加新的）
-        current = app.styleSheet() or ''
-        marker_start = '/* FONT_OVERRIDE_START */'
-        marker_end = '/* FONT_OVERRIDE_END */'
-        if marker_start in current:
-            current = current[:current.index(marker_start)] + current[current.index(marker_end) + len(marker_end):]
-        font_qss = f"""
-        {marker_start}
-        QLabel, QLineEdit, QTextEdit, QPlainTextEdit, QStatusBar,
-        QComboBox, QListWidget, QTreeWidget {{
-            font-family: "{font_family}", "Microsoft YaHei UI", "微软雅黑", sans-serif;
-        }}
-        QPushButton {{
-            font-family: "{font_family}", "Microsoft YaHei UI", "微软雅黑", sans-serif;
-            font-weight: 500;
-        }}
-        {marker_end}
-        """
-        app.setStyleSheet(current + font_qss)
+        try:
+            app = QApplication.instance()
+            if not app or not font_family:
+                return
+            from app.font_manager import apply_font
+            apply_font(app, font_family, 10)
+            # 替换 QSS 中的字体覆盖段（去除旧的 FONT_OVERRIDE，追加新的）
+            current = app.styleSheet() or ''
+            marker_start = '/* FONT_OVERRIDE_START */'
+            marker_end = '/* FONT_OVERRIDE_END */'
+            if marker_start in current:
+                current = current[:current.index(marker_start)] + current[current.index(marker_end) + len(marker_end):]
+            font_qss = f"""
+            {marker_start}
+            QLabel, QLineEdit, QTextEdit, QPlainTextEdit, QStatusBar,
+            QComboBox, QListWidget, QTreeWidget {{
+                font-family: "{font_family}", "Microsoft YaHei UI", "微软雅黑", sans-serif;
+            }}
+            QPushButton {{
+                font-family: "{font_family}", "Microsoft YaHei UI", "微软雅黑", sans-serif;
+                font-weight: 500;
+            }}
+            {marker_end}
+            """
+            app.setStyleSheet(current + font_qss)
+        except Exception:
+            pass
 
     def _on_apply(self):
-        self.config = self._collect_config()
-        self.config.save()
-        self._apply_font_globally(self.font_combo.currentData())
+        try:
+            self.config = self._collect_config()
+            self.config.save()
+            self._apply_font_globally(self.font_combo.currentData())
+        except Exception:
+            pass
 
     def _on_ok(self):
-        self.config = self._collect_config()
-        self.config.save()
-        self._apply_font_globally(self.font_combo.currentData())
-        self.accept()
+        try:
+            self.config = self._collect_config()
+            self.config.save()
+            self._apply_font_globally(self.font_combo.currentData())
+            self.accept()
+        except Exception:
+            self.accept()
 
     @classmethod
     def edit_config(cls, config: AppConfig, parent=None) -> AppConfig:
